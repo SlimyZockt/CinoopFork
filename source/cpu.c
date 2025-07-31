@@ -1,30 +1,28 @@
 #ifndef PS4
-	#include <stdio.h>
-	#include <stdlib.h>
-	#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #endif
 
 #ifdef PS4
-	#define printf(...) \
-	do { \
-		char _debug_buffer[512]; \
-		int _dbg_size = sprintf(_debug_buffer, ##__VA_ARGS__); \
-		extern int sock; \
-		sceNetSend(sock, _debug_buffer, _dbg_size, 0); \
-	} while(0)
+#define printf(...)                                                            \
+  do {                                                                         \
+    char _debug_buffer[512];                                                   \
+    int _dbg_size = sprintf(_debug_buffer, ##__VA_ARGS__);                     \
+    extern int sock;                                                           \
+    sceNetSend(sock, _debug_buffer, _dbg_size, 0);                             \
+  } while (0)
 #endif
 
-#include "platform.h"
-
+#include "cb.h"
 #include "debug.h"
-#include "registers.h"
-#include "memory.h"
+#include "display.h"
+#include "gpu.h"
 #include "interrupts.h"
 #include "keys.h"
-#include "gpu.h"
-#include "cb.h"
-#include "display.h"
 #include "main.h"
+#include "memory.h"
+#include "registers.h"
 
 #include "cpu.h"
 
@@ -47,603 +45,663 @@ NO$GMB
 */
 
 const struct instruction instructions[256] = {
-	{ "NOP", 0, nop },                           // 0x00
-	{ "LD BC, 0x%04X", 2, ld_bc_nn },            // 0x01
-	{ "LD (BC), A", 0, ld_bcp_a },               // 0x02
-	{ "INC BC", 0, inc_bc },                     // 0x03
-	{ "INC B", 0, inc_b },                       // 0x04
-	{ "DEC B", 0, dec_b },                       // 0x05
-	{ "LD B, 0x%02X", 1, ld_b_n },               // 0x06
-	{ "RLCA", 0, rlca },                         // 0x07
-	{ "LD (0x%04X), SP", 2, ld_nnp_sp },         // 0x08
-	{ "ADD HL, BC", 0, add_hl_bc },              // 0x09
-	{ "LD A, (BC)", 0, ld_a_bcp },               // 0x0a
-	{ "DEC BC", 0, dec_bc },                     // 0x0b
-	{ "INC C", 0, inc_c },                       // 0x0c
-	{ "DEC C", 0, dec_c },                       // 0x0d
-	{ "LD C, 0x%02X", 1, ld_c_n },               // 0x0e
-	{ "RRCA", 0, rrca },                         // 0x0f
-	{ "STOP", 1, stop },                         // 0x10
-	{ "LD DE, 0x%04X", 2, ld_de_nn },            // 0x11
-	{ "LD (DE), A", 0, ld_dep_a },               // 0x12
-	{ "INC DE", 0, inc_de },                     // 0x13
-	{ "INC D", 0, inc_d },                       // 0x14
-	{ "DEC D", 0, dec_d },                       // 0x15
-	{ "LD D, 0x%02X", 1, ld_d_n },               // 0x16
-	{ "RLA", 0, rla },                           // 0x17
-	{ "JR 0x%02X", 1, jr_n },                    // 0x18
-	{ "ADD HL, DE", 0, add_hl_de },              // 0x19
-	{ "LD A, (DE)", 0, ld_a_dep },               // 0x1a
-	{ "DEC DE", 0, dec_de },                     // 0x1b
-	{ "INC E", 0, inc_e },                       // 0x1c
-	{ "DEC E", 0, dec_e },                       // 0x1d
-	{ "LD E, 0x%02X", 1, ld_e_n },               // 0x1e
-	{ "RRA", 0, rra },                           // 0x1f
-	{ "JR NZ, 0x%02X", 1, jr_nz_n },             // 0x20
-	{ "LD HL, 0x%04X", 2, ld_hl_nn },            // 0x21
-	{ "LDI (HL), A", 0, ldi_hlp_a },             // 0x22
-	{ "INC HL", 0, inc_hl },                     // 0x23
-	{ "INC H", 0, inc_h },                       // 0x24
-	{ "DEC H", 0, dec_h },                       // 0x25
-	{ "LD H, 0x%02X", 1, ld_h_n },               // 0x26
-	{ "DAA", 0, daa },                           // 0x27
-	{ "JR Z, 0x%02X", 1, jr_z_n },               // 0x28
-	{ "ADD HL, HL", 0, add_hl_hl },              // 0x29
-	{ "LDI A, (HL)", 0, ldi_a_hlp },             // 0x2a
-	{ "DEC HL", 0, dec_hl },                     // 0x2b
-	{ "INC L", 0, inc_l },                       // 0x2c
-	{ "DEC L", 0, dec_l },                       // 0x2d
-	{ "LD L, 0x%02X", 1, ld_l_n },               // 0x2e
-	{ "CPL", 0, cpl },                           // 0x2f
-	{ "JR NC, 0x%02X", 1, jr_nc_n },             // 0x30
-	{ "LD SP, 0x%04X", 2, ld_sp_nn },            // 0x31
-	{ "LDD (HL), A", 0, ldd_hlp_a },             // 0x32
-	{ "INC SP", 0, inc_sp },                     // 0x33
-	{ "INC (HL)", 0, inc_hlp },                  // 0x34
-	{ "DEC (HL)", 0, dec_hlp },                  // 0x35
-	{ "LD (HL), 0x%02X", 1, ld_hlp_n },          // 0x36
-	{ "SCF", 0, scf },                           // 0x37
-	{ "JR C, 0x%02X", 1, jr_c_n },               // 0x38
-	{ "ADD HL, SP", 0, add_hl_sp },              // 0x39
-	{ "LDD A, (HL)", 0, ldd_a_hlp },             // 0x3a
-	{ "DEC SP", 0, dec_sp },                     // 0x3b
-	{ "INC A", 0, inc_a },                       // 0x3c
-	{ "DEC A", 0, dec_a },                       // 0x3d
-	{ "LD A, 0x%02X", 1, ld_a_n },               // 0x3e
-	{ "CCF", 0, ccf },                           // 0x3f
-	{ "LD B, B", 0, nop },                       // 0x40
-	{ "LD B, C", 0, ld_b_c },                    // 0x41
-	{ "LD B, D", 0, ld_b_d },                    // 0x42
-	{ "LD B, E", 0, ld_b_e },                    // 0x43
-	{ "LD B, H", 0, ld_b_h },                    // 0x44
-	{ "LD B, L", 0, ld_b_l },                    // 0x45
-	{ "LD B, (HL)", 0, ld_b_hlp },               // 0x46
-	{ "LD B, A", 0, ld_b_a },                    // 0x47
-	{ "LD C, B", 0, ld_c_b },                    // 0x48
-	{ "LD C, C", 0, nop },                       // 0x49
-	{ "LD C, D", 0, ld_c_d },                    // 0x4a
-	{ "LD C, E", 0, ld_c_e },                    // 0x4b
-	{ "LD C, H", 0, ld_c_h },                    // 0x4c
-	{ "LD C, L", 0, ld_c_l },                    // 0x4d
-	{ "LD C, (HL)", 0, ld_c_hlp },               // 0x4e
-	{ "LD C, A", 0, ld_c_a },                    // 0x4f
-	{ "LD D, B", 0, ld_d_b },                    // 0x50
-	{ "LD D, C", 0, ld_d_c },                    // 0x51
-	{ "LD D, D", 0, nop },                       // 0x52
-	{ "LD D, E", 0, ld_d_e },                    // 0x53
-	{ "LD D, H", 0, ld_d_h },                    // 0x54
-	{ "LD D, L", 0, ld_d_l },                    // 0x55
-	{ "LD D, (HL)", 0, ld_d_hlp },               // 0x56
-	{ "LD D, A", 0, ld_d_a },                    // 0x57
-	{ "LD E, B", 0, ld_e_b },                    // 0x58
-	{ "LD E, C", 0, ld_e_c },                    // 0x59
-	{ "LD E, D", 0, ld_e_d },                    // 0x5a
-	{ "LD E, E", 0, nop },                       // 0x5b
-	{ "LD E, H", 0, ld_e_h },                    // 0x5c
-	{ "LD E, L", 0, ld_e_l },                    // 0x5d
-	{ "LD E, (HL)", 0, ld_e_hlp },               // 0x5e
-	{ "LD E, A", 0, ld_e_a },                    // 0x5f
-	{ "LD H, B", 0, ld_h_b },                    // 0x60
-	{ "LD H, C", 0, ld_h_c },                    // 0x61
-	{ "LD H, D", 0, ld_h_d },                    // 0x62
-	{ "LD H, E", 0, ld_h_e },                    // 0x63
-	{ "LD H, H", 0, nop },                       // 0x64
-	{ "LD H, L", 0, ld_h_l },                    // 0x65
-	{ "LD H, (HL)", 0, ld_h_hlp },               // 0x66
-	{ "LD H, A", 0, ld_h_a },                    // 0x67
-	{ "LD L, B", 0, ld_l_b },                    // 0x68
-	{ "LD L, C", 0, ld_l_c },                    // 0x69
-	{ "LD L, D", 0, ld_l_d },                    // 0x6a
-	{ "LD L, E", 0, ld_l_e },                    // 0x6b
-	{ "LD L, H", 0, ld_l_h },                    // 0x6c
-	{ "LD L, L", 0, nop },                       // 0x6d
-	{ "LD L, (HL)", 0, ld_l_hlp },               // 0x6e
-	{ "LD L, A", 0, ld_l_a },                    // 0x6f
-	{ "LD (HL), B", 0, ld_hlp_b },               // 0x70
-	{ "LD (HL), C", 0, ld_hlp_c },               // 0x71
-	{ "LD (HL), D", 0, ld_hlp_d },               // 0x72
-	{ "LD (HL), E", 0, ld_hlp_e },               // 0x73
-	{ "LD (HL), H", 0, ld_hlp_h },               // 0x74
-	{ "LD (HL), L", 0, ld_hlp_l },               // 0x75
-	{ "HALT", 0, halt },                         // 0x76
-	{ "LD (HL), A", 0, ld_hlp_a },               // 0x77
-	{ "LD A, B", 0, ld_a_b },                    // 0x78
-	{ "LD A, C", 0, ld_a_c },                    // 0x79
-	{ "LD A, D", 0, ld_a_d },                    // 0x7a
-	{ "LD A, E", 0, ld_a_e },                    // 0x7b
-	{ "LD A, H", 0, ld_a_h },                    // 0x7c
-	{ "LD A, L", 0, ld_a_l },                    // 0x7d
-	{ "LD A, (HL)", 0, ld_a_hlp },               // 0x7e
-	{ "LD A, A", 0, nop },                       // 0x7f
-	{ "ADD A, B", 0, add_a_b },                  // 0x80
-	{ "ADD A, C", 0, add_a_c },                  // 0x81
-	{ "ADD A, D", 0, add_a_d },                  // 0x82
-	{ "ADD A, E", 0, add_a_e },                  // 0x83
-	{ "ADD A, H", 0, add_a_h },                  // 0x84
-	{ "ADD A, L", 0, add_a_l },                  // 0x85
-	{ "ADD A, (HL)", 0, add_a_hlp },             // 0x86
-	{ "ADD A", 0, add_a_a },                     // 0x87
-	{ "ADC B", 0, adc_b },                       // 0x88
-	{ "ADC C", 0, adc_c },                       // 0x89
-	{ "ADC D", 0, adc_d },                       // 0x8a
-	{ "ADC E", 0, adc_e },                       // 0x8b
-	{ "ADC H", 0, adc_h },                       // 0x8c
-	{ "ADC L", 0, adc_l },                       // 0x8d
-	{ "ADC (HL)", 0, adc_hlp },                  // 0x8e
-	{ "ADC A", 0, adc_a },                       // 0x8f
-	{ "SUB B", 0, sub_b },                       // 0x90
-	{ "SUB C", 0, sub_c },                       // 0x91
-	{ "SUB D", 0, sub_d },                       // 0x92
-	{ "SUB E", 0, sub_e },                       // 0x93
-	{ "SUB H", 0, sub_h },                       // 0x94
-	{ "SUB L", 0, sub_l },                       // 0x95
-	{ "SUB (HL)", 0, sub_hlp },                  // 0x96
-	{ "SUB A", 0, sub_a },                       // 0x97
-	{ "SBC B", 0, sbc_b },                       // 0x98
-	{ "SBC C", 0, sbc_c },                       // 0x99
-	{ "SBC D", 0, sbc_d },                       // 0x9a
-	{ "SBC E", 0, sbc_e },                       // 0x9b
-	{ "SBC H", 0, sbc_h },                       // 0x9c
-	{ "SBC L", 0, sbc_l },                       // 0x9d
-	{ "SBC (HL)", 0, sbc_hlp },                  // 0x9e
-	{ "SBC A", 0, sbc_a },                       // 0x9f
-	{ "AND B", 0, and_b },                       // 0xa0
-	{ "AND C", 0, and_c },                       // 0xa1
-	{ "AND D", 0, and_d },                       // 0xa2
-	{ "AND E", 0, and_e },                       // 0xa3
-	{ "AND H", 0, and_h },                       // 0xa4
-	{ "AND L", 0, and_l },                       // 0xa5
-	{ "AND (HL)", 0, and_hlp },                  // 0xa6
-	{ "AND A", 0, and_a },                       // 0xa7
-	{ "XOR B", 0, xor_b },                       // 0xa8
-	{ "XOR C", 0, xor_c },                       // 0xa9
-	{ "XOR D", 0, xor_d },                       // 0xaa
-	{ "XOR E", 0, xor_e },                       // 0xab
-	{ "XOR H", 0, xor_h },                       // 0xac
-	{ "XOR L", 0, xor_l },                       // 0xad
-	{ "XOR (HL)", 0, xor_hlp },                  // 0xae
-	{ "XOR A", 0, xor_a },                       // 0xaf
-	{ "OR B", 0, or_b },                         // 0xb0
-	{ "OR C", 0, or_c },                         // 0xb1
-	{ "OR D", 0, or_d },                         // 0xb2
-	{ "OR E", 0, or_e },                         // 0xb3
-	{ "OR H", 0, or_h },                         // 0xb4
-	{ "OR L", 0, or_l },                         // 0xb5
-	{ "OR (HL)", 0, or_hlp },                    // 0xb6
-	{ "OR A", 0, or_a },                         // 0xb7
-	{ "CP B", 0, cp_b },                         // 0xb8
-	{ "CP C", 0, cp_c },                         // 0xb9
-	{ "CP D", 0, cp_d },                         // 0xba
-	{ "CP E", 0, cp_e },                         // 0xbb
-	{ "CP H", 0, cp_h },                         // 0xbc
-	{ "CP L", 0, cp_l },                         // 0xbd
-	{ "CP (HL)", 0, cp_hlp },                    // 0xbe
-	{ "CP A", 0, cp_a },                         // 0xbf
-	{ "RET NZ", 0, ret_nz },                     // 0xc0
-	{ "POP BC", 0, pop_bc },                     // 0xc1
-	{ "JP NZ, 0x%04X", 2, jp_nz_nn },            // 0xc2
-	{ "JP 0x%04X", 2, jp_nn },                   // 0xc3
-	{ "CALL NZ, 0x%04X", 2, call_nz_nn },        // 0xc4
-	{ "PUSH BC", 0, push_bc },                   // 0xc5
-	{ "ADD A, 0x%02X", 1, add_a_n },             // 0xc6
-	{ "RST 0x00", 0, rst_0 },                    // 0xc7
-	{ "RET Z", 0, ret_z },                       // 0xc8
-	{ "RET", 0, ret },                           // 0xc9
-	{ "JP Z, 0x%04X", 2, jp_z_nn },              // 0xca
-	{ "CB %02X", 1, cb_n },                      // 0xcb
-	{ "CALL Z, 0x%04X", 2, call_z_nn },          // 0xcc
-	{ "CALL 0x%04X", 2, call_nn },               // 0xcd
-	{ "ADC 0x%02X", 1, adc_n },                  // 0xce
-	{ "RST 0x08", 0, rst_08 },                   // 0xcf
-	{ "RET NC", 0, ret_nc },                     // 0xd0
-	{ "POP DE", 0, pop_de },                     // 0xd1
-	{ "JP NC, 0x%04X", 2, jp_nc_nn },            // 0xd2
-	{ "UNKNOWN", 0, undefined },                 // 0xd3
-	{ "CALL NC, 0x%04X", 2, call_nc_nn },        // 0xd4
-	{ "PUSH DE", 0, push_de },                   // 0xd5
-	{ "SUB 0x%02X", 1, sub_n },                  // 0xd6
-	{ "RST 0x10", 0, rst_10 },                   // 0xd7
-	{ "RET C", 0, ret_c },                       // 0xd8
-	{ "RETI", 0, returnFromInterrupt },          // 0xd9
-	{ "JP C, 0x%04X", 2, jp_c_nn },              // 0xda
-	{ "UNKNOWN", 0, undefined },                 // 0xdb
-	{ "CALL C, 0x%04X", 2, call_c_nn },          // 0xdc
-	{ "UNKNOWN", 0, undefined },                 // 0xdd
-	{ "SBC 0x%02X", 1, sbc_n },                  // 0xde
-	{ "RST 0x18", 0, rst_18 },                   // 0xdf
-	{ "LD (0xFF00 + 0x%02X), A", 1, ld_ff_n_ap },// 0xe0
-	{ "POP HL", 0, pop_hl },                     // 0xe1
-	{ "LD (0xFF00 + C), A", 0, ld_ff_c_a },      // 0xe2
-	{ "UNKNOWN", 0, undefined },                 // 0xe3
-	{ "UNKNOWN", 0, undefined },                 // 0xe4
-	{ "PUSH HL", 0, push_hl },                   // 0xe5
-	{ "AND 0x%02X", 1, and_n },                  // 0xe6
-	{ "RST 0x20", 0, rst_20 },                   // 0xe7
-	{ "ADD SP,0x%02X", 1, add_sp_n },            // 0xe8
-	{ "JP HL", 0, jp_hl },                       // 0xe9
-	{ "LD (0x%04X), A", 2, ld_nnp_a },           // 0xea
-	{ "UNKNOWN", 0, undefined },                 // 0xeb
-	{ "UNKNOWN", 0, undefined },                 // 0xec
-	{ "UNKNOWN", 0, undefined },                 // 0xed
-	{ "XOR 0x%02X", 1, xor_n },                  // 0xee
-	{ "RST 0x28", 0, rst_28 },                   // 0xef
-	{ "LD A, (0xFF00 + 0x%02X)", 1, ld_ff_ap_n },// 0xf0
-	{ "POP AF", 0, pop_af },                     // 0xf1
-	{ "LD A, (0xFF00 + C)", 0, ld_a_ff_c },      // 0xf2
-	{ "DI", 0, di_inst },                        // 0xf3
-	{ "UNKNOWN", 0, undefined },                 // 0xf4
-	{ "PUSH AF", 0, push_af },                   // 0xf5
-	{ "OR 0x%02X", 1, or_n },                    // 0xf6
-	{ "RST 0x30", 0, rst_30 },                   // 0xf7
-	{ "LD HL, SP+0x%02X", 1, ld_hl_sp_n },       // 0xf8
-	{ "LD SP, HL", 0, ld_sp_hl },                // 0xf9
-	{ "LD A, (0x%04X)", 2, ld_a_nnp },           // 0xfa
-	{ "EI", 0, ei },                             // 0xfb
-	{ "UNKNOWN", 0, undefined },                 // 0xfc
-	{ "UNKNOWN", 0, undefined },                 // 0xfd
-	{ "CP 0x%02X", 1, cp_n },                    // 0xfe
-	{ "RST 0x38", 0, rst_38 },                   // 0xff
+    {"NOP", 0, nop},                            // 0x00
+    {"LD BC, 0x%04X", 2, ld_bc_nn},             // 0x01
+    {"LD (BC), A", 0, ld_bcp_a},                // 0x02
+    {"INC BC", 0, inc_bc},                      // 0x03
+    {"INC B", 0, inc_b},                        // 0x04
+    {"DEC B", 0, dec_b},                        // 0x05
+    {"LD B, 0x%02X", 1, ld_b_n},                // 0x06
+    {"RLCA", 0, rlca},                          // 0x07
+    {"LD (0x%04X), SP", 2, ld_nnp_sp},          // 0x08
+    {"ADD HL, BC", 0, add_hl_bc},               // 0x09
+    {"LD A, (BC)", 0, ld_a_bcp},                // 0x0a
+    {"DEC BC", 0, dec_bc},                      // 0x0b
+    {"INC C", 0, inc_c},                        // 0x0c
+    {"DEC C", 0, dec_c},                        // 0x0d
+    {"LD C, 0x%02X", 1, ld_c_n},                // 0x0e
+    {"RRCA", 0, rrca},                          // 0x0f
+    {"STOP", 1, stop},                          // 0x10
+    {"LD DE, 0x%04X", 2, ld_de_nn},             // 0x11
+    {"LD (DE), A", 0, ld_dep_a},                // 0x12
+    {"INC DE", 0, inc_de},                      // 0x13
+    {"INC D", 0, inc_d},                        // 0x14
+    {"DEC D", 0, dec_d},                        // 0x15
+    {"LD D, 0x%02X", 1, ld_d_n},                // 0x16
+    {"RLA", 0, rla},                            // 0x17
+    {"JR 0x%02X", 1, jr_n},                     // 0x18
+    {"ADD HL, DE", 0, add_hl_de},               // 0x19
+    {"LD A, (DE)", 0, ld_a_dep},                // 0x1a
+    {"DEC DE", 0, dec_de},                      // 0x1b
+    {"INC E", 0, inc_e},                        // 0x1c
+    {"DEC E", 0, dec_e},                        // 0x1d
+    {"LD E, 0x%02X", 1, ld_e_n},                // 0x1e
+    {"RRA", 0, rra},                            // 0x1f
+    {"JR NZ, 0x%02X", 1, jr_nz_n},              // 0x20
+    {"LD HL, 0x%04X", 2, ld_hl_nn},             // 0x21
+    {"LDI (HL), A", 0, ldi_hlp_a},              // 0x22
+    {"INC HL", 0, inc_hl},                      // 0x23
+    {"INC H", 0, inc_h},                        // 0x24
+    {"DEC H", 0, dec_h},                        // 0x25
+    {"LD H, 0x%02X", 1, ld_h_n},                // 0x26
+    {"DAA", 0, daa},                            // 0x27
+    {"JR Z, 0x%02X", 1, jr_z_n},                // 0x28
+    {"ADD HL, HL", 0, add_hl_hl},               // 0x29
+    {"LDI A, (HL)", 0, ldi_a_hlp},              // 0x2a
+    {"DEC HL", 0, dec_hl},                      // 0x2b
+    {"INC L", 0, inc_l},                        // 0x2c
+    {"DEC L", 0, dec_l},                        // 0x2d
+    {"LD L, 0x%02X", 1, ld_l_n},                // 0x2e
+    {"CPL", 0, cpl},                            // 0x2f
+    {"JR NC, 0x%02X", 1, jr_nc_n},              // 0x30
+    {"LD SP, 0x%04X", 2, ld_sp_nn},             // 0x31
+    {"LDD (HL), A", 0, ldd_hlp_a},              // 0x32
+    {"INC SP", 0, inc_sp},                      // 0x33
+    {"INC (HL)", 0, inc_hlp},                   // 0x34
+    {"DEC (HL)", 0, dec_hlp},                   // 0x35
+    {"LD (HL), 0x%02X", 1, ld_hlp_n},           // 0x36
+    {"SCF", 0, scf},                            // 0x37
+    {"JR C, 0x%02X", 1, jr_c_n},                // 0x38
+    {"ADD HL, SP", 0, add_hl_sp},               // 0x39
+    {"LDD A, (HL)", 0, ldd_a_hlp},              // 0x3a
+    {"DEC SP", 0, dec_sp},                      // 0x3b
+    {"INC A", 0, inc_a},                        // 0x3c
+    {"DEC A", 0, dec_a},                        // 0x3d
+    {"LD A, 0x%02X", 1, ld_a_n},                // 0x3e
+    {"CCF", 0, ccf},                            // 0x3f
+    {"LD B, B", 0, nop},                        // 0x40
+    {"LD B, C", 0, ld_b_c},                     // 0x41
+    {"LD B, D", 0, ld_b_d},                     // 0x42
+    {"LD B, E", 0, ld_b_e},                     // 0x43
+    {"LD B, H", 0, ld_b_h},                     // 0x44
+    {"LD B, L", 0, ld_b_l},                     // 0x45
+    {"LD B, (HL)", 0, ld_b_hlp},                // 0x46
+    {"LD B, A", 0, ld_b_a},                     // 0x47
+    {"LD C, B", 0, ld_c_b},                     // 0x48
+    {"LD C, C", 0, nop},                        // 0x49
+    {"LD C, D", 0, ld_c_d},                     // 0x4a
+    {"LD C, E", 0, ld_c_e},                     // 0x4b
+    {"LD C, H", 0, ld_c_h},                     // 0x4c
+    {"LD C, L", 0, ld_c_l},                     // 0x4d
+    {"LD C, (HL)", 0, ld_c_hlp},                // 0x4e
+    {"LD C, A", 0, ld_c_a},                     // 0x4f
+    {"LD D, B", 0, ld_d_b},                     // 0x50
+    {"LD D, C", 0, ld_d_c},                     // 0x51
+    {"LD D, D", 0, nop},                        // 0x52
+    {"LD D, E", 0, ld_d_e},                     // 0x53
+    {"LD D, H", 0, ld_d_h},                     // 0x54
+    {"LD D, L", 0, ld_d_l},                     // 0x55
+    {"LD D, (HL)", 0, ld_d_hlp},                // 0x56
+    {"LD D, A", 0, ld_d_a},                     // 0x57
+    {"LD E, B", 0, ld_e_b},                     // 0x58
+    {"LD E, C", 0, ld_e_c},                     // 0x59
+    {"LD E, D", 0, ld_e_d},                     // 0x5a
+    {"LD E, E", 0, nop},                        // 0x5b
+    {"LD E, H", 0, ld_e_h},                     // 0x5c
+    {"LD E, L", 0, ld_e_l},                     // 0x5d
+    {"LD E, (HL)", 0, ld_e_hlp},                // 0x5e
+    {"LD E, A", 0, ld_e_a},                     // 0x5f
+    {"LD H, B", 0, ld_h_b},                     // 0x60
+    {"LD H, C", 0, ld_h_c},                     // 0x61
+    {"LD H, D", 0, ld_h_d},                     // 0x62
+    {"LD H, E", 0, ld_h_e},                     // 0x63
+    {"LD H, H", 0, nop},                        // 0x64
+    {"LD H, L", 0, ld_h_l},                     // 0x65
+    {"LD H, (HL)", 0, ld_h_hlp},                // 0x66
+    {"LD H, A", 0, ld_h_a},                     // 0x67
+    {"LD L, B", 0, ld_l_b},                     // 0x68
+    {"LD L, C", 0, ld_l_c},                     // 0x69
+    {"LD L, D", 0, ld_l_d},                     // 0x6a
+    {"LD L, E", 0, ld_l_e},                     // 0x6b
+    {"LD L, H", 0, ld_l_h},                     // 0x6c
+    {"LD L, L", 0, nop},                        // 0x6d
+    {"LD L, (HL)", 0, ld_l_hlp},                // 0x6e
+    {"LD L, A", 0, ld_l_a},                     // 0x6f
+    {"LD (HL), B", 0, ld_hlp_b},                // 0x70
+    {"LD (HL), C", 0, ld_hlp_c},                // 0x71
+    {"LD (HL), D", 0, ld_hlp_d},                // 0x72
+    {"LD (HL), E", 0, ld_hlp_e},                // 0x73
+    {"LD (HL), H", 0, ld_hlp_h},                // 0x74
+    {"LD (HL), L", 0, ld_hlp_l},                // 0x75
+    {"HALT", 0, halt},                          // 0x76
+    {"LD (HL), A", 0, ld_hlp_a},                // 0x77
+    {"LD A, B", 0, ld_a_b},                     // 0x78
+    {"LD A, C", 0, ld_a_c},                     // 0x79
+    {"LD A, D", 0, ld_a_d},                     // 0x7a
+    {"LD A, E", 0, ld_a_e},                     // 0x7b
+    {"LD A, H", 0, ld_a_h},                     // 0x7c
+    {"LD A, L", 0, ld_a_l},                     // 0x7d
+    {"LD A, (HL)", 0, ld_a_hlp},                // 0x7e
+    {"LD A, A", 0, nop},                        // 0x7f
+    {"ADD A, B", 0, add_a_b},                   // 0x80
+    {"ADD A, C", 0, add_a_c},                   // 0x81
+    {"ADD A, D", 0, add_a_d},                   // 0x82
+    {"ADD A, E", 0, add_a_e},                   // 0x83
+    {"ADD A, H", 0, add_a_h},                   // 0x84
+    {"ADD A, L", 0, add_a_l},                   // 0x85
+    {"ADD A, (HL)", 0, add_a_hlp},              // 0x86
+    {"ADD A", 0, add_a_a},                      // 0x87
+    {"ADC B", 0, adc_b},                        // 0x88
+    {"ADC C", 0, adc_c},                        // 0x89
+    {"ADC D", 0, adc_d},                        // 0x8a
+    {"ADC E", 0, adc_e},                        // 0x8b
+    {"ADC H", 0, adc_h},                        // 0x8c
+    {"ADC L", 0, adc_l},                        // 0x8d
+    {"ADC (HL)", 0, adc_hlp},                   // 0x8e
+    {"ADC A", 0, adc_a},                        // 0x8f
+    {"SUB B", 0, sub_b},                        // 0x90
+    {"SUB C", 0, sub_c},                        // 0x91
+    {"SUB D", 0, sub_d},                        // 0x92
+    {"SUB E", 0, sub_e},                        // 0x93
+    {"SUB H", 0, sub_h},                        // 0x94
+    {"SUB L", 0, sub_l},                        // 0x95
+    {"SUB (HL)", 0, sub_hlp},                   // 0x96
+    {"SUB A", 0, sub_a},                        // 0x97
+    {"SBC B", 0, sbc_b},                        // 0x98
+    {"SBC C", 0, sbc_c},                        // 0x99
+    {"SBC D", 0, sbc_d},                        // 0x9a
+    {"SBC E", 0, sbc_e},                        // 0x9b
+    {"SBC H", 0, sbc_h},                        // 0x9c
+    {"SBC L", 0, sbc_l},                        // 0x9d
+    {"SBC (HL)", 0, sbc_hlp},                   // 0x9e
+    {"SBC A", 0, sbc_a},                        // 0x9f
+    {"AND B", 0, and_b},                        // 0xa0
+    {"AND C", 0, and_c},                        // 0xa1
+    {"AND D", 0, and_d},                        // 0xa2
+    {"AND E", 0, and_e},                        // 0xa3
+    {"AND H", 0, and_h},                        // 0xa4
+    {"AND L", 0, and_l},                        // 0xa5
+    {"AND (HL)", 0, and_hlp},                   // 0xa6
+    {"AND A", 0, and_a},                        // 0xa7
+    {"XOR B", 0, xor_b},                        // 0xa8
+    {"XOR C", 0, xor_c},                        // 0xa9
+    {"XOR D", 0, xor_d},                        // 0xaa
+    {"XOR E", 0, xor_e},                        // 0xab
+    {"XOR H", 0, xor_h},                        // 0xac
+    {"XOR L", 0, xor_l},                        // 0xad
+    {"XOR (HL)", 0, xor_hlp},                   // 0xae
+    {"XOR A", 0, xor_a},                        // 0xaf
+    {"OR B", 0, or_b},                          // 0xb0
+    {"OR C", 0, or_c},                          // 0xb1
+    {"OR D", 0, or_d},                          // 0xb2
+    {"OR E", 0, or_e},                          // 0xb3
+    {"OR H", 0, or_h},                          // 0xb4
+    {"OR L", 0, or_l},                          // 0xb5
+    {"OR (HL)", 0, or_hlp},                     // 0xb6
+    {"OR A", 0, or_a},                          // 0xb7
+    {"CP B", 0, cp_b},                          // 0xb8
+    {"CP C", 0, cp_c},                          // 0xb9
+    {"CP D", 0, cp_d},                          // 0xba
+    {"CP E", 0, cp_e},                          // 0xbb
+    {"CP H", 0, cp_h},                          // 0xbc
+    {"CP L", 0, cp_l},                          // 0xbd
+    {"CP (HL)", 0, cp_hlp},                     // 0xbe
+    {"CP A", 0, cp_a},                          // 0xbf
+    {"RET NZ", 0, ret_nz},                      // 0xc0
+    {"POP BC", 0, pop_bc},                      // 0xc1
+    {"JP NZ, 0x%04X", 2, jp_nz_nn},             // 0xc2
+    {"JP 0x%04X", 2, jp_nn},                    // 0xc3
+    {"CALL NZ, 0x%04X", 2, call_nz_nn},         // 0xc4
+    {"PUSH BC", 0, push_bc},                    // 0xc5
+    {"ADD A, 0x%02X", 1, add_a_n},              // 0xc6
+    {"RST 0x00", 0, rst_0},                     // 0xc7
+    {"RET Z", 0, ret_z},                        // 0xc8
+    {"RET", 0, ret},                            // 0xc9
+    {"JP Z, 0x%04X", 2, jp_z_nn},               // 0xca
+    {"CB %02X", 1, cb_n},                       // 0xcb
+    {"CALL Z, 0x%04X", 2, call_z_nn},           // 0xcc
+    {"CALL 0x%04X", 2, call_nn},                // 0xcd
+    {"ADC 0x%02X", 1, adc_n},                   // 0xce
+    {"RST 0x08", 0, rst_08},                    // 0xcf
+    {"RET NC", 0, ret_nc},                      // 0xd0
+    {"POP DE", 0, pop_de},                      // 0xd1
+    {"JP NC, 0x%04X", 2, jp_nc_nn},             // 0xd2
+    {"UNKNOWN", 0, undefined},                  // 0xd3
+    {"CALL NC, 0x%04X", 2, call_nc_nn},         // 0xd4
+    {"PUSH DE", 0, push_de},                    // 0xd5
+    {"SUB 0x%02X", 1, sub_n},                   // 0xd6
+    {"RST 0x10", 0, rst_10},                    // 0xd7
+    {"RET C", 0, ret_c},                        // 0xd8
+    {"RETI", 0, returnFromInterrupt},           // 0xd9
+    {"JP C, 0x%04X", 2, jp_c_nn},               // 0xda
+    {"UNKNOWN", 0, undefined},                  // 0xdb
+    {"CALL C, 0x%04X", 2, call_c_nn},           // 0xdc
+    {"UNKNOWN", 0, undefined},                  // 0xdd
+    {"SBC 0x%02X", 1, sbc_n},                   // 0xde
+    {"RST 0x18", 0, rst_18},                    // 0xdf
+    {"LD (0xFF00 + 0x%02X), A", 1, ld_ff_n_ap}, // 0xe0
+    {"POP HL", 0, pop_hl},                      // 0xe1
+    {"LD (0xFF00 + C), A", 0, ld_ff_c_a},       // 0xe2
+    {"UNKNOWN", 0, undefined},                  // 0xe3
+    {"UNKNOWN", 0, undefined},                  // 0xe4
+    {"PUSH HL", 0, push_hl},                    // 0xe5
+    {"AND 0x%02X", 1, and_n},                   // 0xe6
+    {"RST 0x20", 0, rst_20},                    // 0xe7
+    {"ADD SP,0x%02X", 1, add_sp_n},             // 0xe8
+    {"JP HL", 0, jp_hl},                        // 0xe9
+    {"LD (0x%04X), A", 2, ld_nnp_a},            // 0xea
+    {"UNKNOWN", 0, undefined},                  // 0xeb
+    {"UNKNOWN", 0, undefined},                  // 0xec
+    {"UNKNOWN", 0, undefined},                  // 0xed
+    {"XOR 0x%02X", 1, xor_n},                   // 0xee
+    {"RST 0x28", 0, rst_28},                    // 0xef
+    {"LD A, (0xFF00 + 0x%02X)", 1, ld_ff_ap_n}, // 0xf0
+    {"POP AF", 0, pop_af},                      // 0xf1
+    {"LD A, (0xFF00 + C)", 0, ld_a_ff_c},       // 0xf2
+    {"DI", 0, di_inst},                         // 0xf3
+    {"UNKNOWN", 0, undefined},                  // 0xf4
+    {"PUSH AF", 0, push_af},                    // 0xf5
+    {"OR 0x%02X", 1, or_n},                     // 0xf6
+    {"RST 0x30", 0, rst_30},                    // 0xf7
+    {"LD HL, SP+0x%02X", 1, ld_hl_sp_n},        // 0xf8
+    {"LD SP, HL", 0, ld_sp_hl},                 // 0xf9
+    {"LD A, (0x%04X)", 2, ld_a_nnp},            // 0xfa
+    {"EI", 0, ei},                              // 0xfb
+    {"UNKNOWN", 0, undefined},                  // 0xfc
+    {"UNKNOWN", 0, undefined},                  // 0xfd
+    {"CP 0x%02X", 1, cp_n},                     // 0xfe
+    {"RST 0x38", 0, rst_38},                    // 0xff
 };
 
 const unsigned char instructionTicks[256] = {
-	2, 6, 4, 4, 2, 2, 4, 4, 10, 4, 4, 4, 2, 2, 4, 4, // 0x0_
-	2, 6, 4, 4, 2, 2, 4, 4,  4, 4, 4, 4, 2, 2, 4, 4, // 0x1_
-	0, 6, 4, 4, 2, 2, 4, 2,  0, 4, 4, 4, 2, 2, 4, 2, // 0x2_
-	4, 6, 4, 4, 6, 6, 6, 2,  0, 4, 4, 4, 2, 2, 4, 2, // 0x3_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0x4_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0x5_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0x6_
-	4, 4, 4, 4, 4, 4, 2, 4,  2, 2, 2, 2, 2, 2, 4, 2, // 0x7_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0x8_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0x9_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0xa_
-	2, 2, 2, 2, 2, 2, 4, 2,  2, 2, 2, 2, 2, 2, 4, 2, // 0xb_
-	0, 6, 0, 6, 0, 8, 4, 8,  0, 2, 0, 0, 0, 6, 4, 8, // 0xc_
-	0, 6, 0, 0, 0, 8, 4, 8,  0, 8, 0, 0, 0, 0, 4, 8, // 0xd_
-	6, 6, 4, 0, 0, 8, 4, 8,  8, 2, 8, 0, 0, 0, 4, 8, // 0xe_
-	6, 6, 4, 2, 0, 8, 4, 8,  6, 4, 8, 2, 0, 0, 4, 8  // 0xf_
+    2, 6, 4, 4, 2, 2, 4, 4, 10, 4, 4, 4, 2, 2, 4, 4, // 0x0_
+    2, 6, 4, 4, 2, 2, 4, 4, 4,  4, 4, 4, 2, 2, 4, 4, // 0x1_
+    0, 6, 4, 4, 2, 2, 4, 2, 0,  4, 4, 4, 2, 2, 4, 2, // 0x2_
+    4, 6, 4, 4, 6, 6, 6, 2, 0,  4, 4, 4, 2, 2, 4, 2, // 0x3_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0x4_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0x5_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0x6_
+    4, 4, 4, 4, 4, 4, 2, 4, 2,  2, 2, 2, 2, 2, 4, 2, // 0x7_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0x8_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0x9_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0xa_
+    2, 2, 2, 2, 2, 2, 4, 2, 2,  2, 2, 2, 2, 2, 4, 2, // 0xb_
+    0, 6, 0, 6, 0, 8, 4, 8, 0,  2, 0, 0, 0, 6, 4, 8, // 0xc_
+    0, 6, 0, 0, 0, 8, 4, 8, 0,  8, 0, 0, 0, 0, 4, 8, // 0xd_
+    6, 6, 4, 0, 0, 8, 4, 8, 8,  2, 8, 0, 0, 0, 4, 8, // 0xe_
+    6, 6, 4, 2, 0, 8, 4, 8, 6,  4, 8, 2, 0, 0, 4, 8  // 0xf_
 };
 
 unsigned long ticks;
 unsigned char stopped;
 
 void reset(void) {
-	memset(sram, 0, sizeof(sram));
-	memcpy(io, ioReset, sizeof(io));
-	memset(vram, 0, sizeof(vram));
-	memset(oam, 0, sizeof(oam));
-	memset(wram, 0, sizeof(wram));
-	memset(hram, 0, sizeof(hram));
-	
-	registers.a = 0x01;
-	registers.f = 0xb0;
-	registers.b = 0x00;
-	registers.c = 0x13;
-	registers.d = 0x00;
-	registers.e = 0xd8;
-	registers.h = 0x01;
-	registers.l = 0x4d;
-	registers.sp = 0xfffe;
-	registers.pc = 0x100;
-	
-	interrupt.master = 1;
-	interrupt.enable = 0;
-	interrupt.flags = 0;
-	
-	keys.a = 1;
-	keys.b = 1;
-	keys.select = 1;
-	keys.start = 1;
-	keys.right = 1;
-	keys.left = 1;
-	keys.up = 1;
-	keys.down = 1;
-	
-	memset(tiles, 0, sizeof(tiles));
-	
-	backgroundPalette[0] = palette[0];
-	backgroundPalette[1] = palette[1];
-	backgroundPalette[2] = palette[2];
-	backgroundPalette[3] = palette[3];
-	
-	spritePalette[0][0] = palette[0];
-	spritePalette[0][1] = palette[1];
-	spritePalette[0][2] = palette[2];
-	spritePalette[0][3] = palette[3];
-	
-	spritePalette[1][0] = palette[0];
-	spritePalette[1][1] = palette[1];
-	spritePalette[1][2] = palette[2];
-	spritePalette[1][3] = palette[3];
-	
-	gpu.control = 0;
-	gpu.scrollX = 0;
-	gpu.scrollY = 0;
-	gpu.scanline = 0;
-	gpu.tick = 0;
-	
-	ticks = 0;
-	stopped = 0;
-	
-	#ifdef WIN
-		memset(framebuffer, 255, sizeof(framebuffer));
-	#endif
-	
-	writeByte(0xFF05, 0);
-	writeByte(0xFF06, 0);
-	writeByte(0xFF07, 0);
-	writeByte(0xFF10, 0x80);
-	writeByte(0xFF11, 0xBF);
-	writeByte(0xFF12, 0xF3);
-	writeByte(0xFF14, 0xBF);
-	writeByte(0xFF16, 0x3F);
-	writeByte(0xFF17, 0x00);
-	writeByte(0xFF19, 0xBF);
-	writeByte(0xFF1A, 0x7A);
-	writeByte(0xFF1B, 0xFF);
-	writeByte(0xFF1C, 0x9F);
-	writeByte(0xFF1E, 0xBF);
-	writeByte(0xFF20, 0xFF);
-	writeByte(0xFF21, 0x00);
-	writeByte(0xFF22, 0x00);
-	writeByte(0xFF23, 0xBF);
-	writeByte(0xFF24, 0x77);
-	writeByte(0xFF25, 0xF3);
-	writeByte(0xFF26, 0xF1);
-	writeByte(0xFF40, 0x91);
-	writeByte(0xFF42, 0x00);
-	writeByte(0xFF43, 0x00);
-	writeByte(0xFF45, 0x00);
-	writeByte(0xFF47, 0xFC);
-	writeByte(0xFF48, 0xFF);
-	writeByte(0xFF49, 0xFF);
-	writeByte(0xFF4A, 0x00);
-	writeByte(0xFF4B, 0x00);
-	writeByte(0xFFFF, 0x00);
+  memset(sram, 0, sizeof(sram));
+  memcpy(io, ioReset, sizeof(io));
+  memset(vram, 0, sizeof(vram));
+  memset(oam, 0, sizeof(oam));
+  memset(wram, 0, sizeof(wram));
+  memset(hram, 0, sizeof(hram));
+
+  registers.a = 0x01;
+  registers.f = 0xb0;
+  registers.b = 0x00;
+  registers.c = 0x13;
+  registers.d = 0x00;
+  registers.e = 0xd8;
+  registers.h = 0x01;
+  registers.l = 0x4d;
+  registers.sp = 0xfffe;
+  registers.pc = 0x100;
+
+  interrupt.master = 1;
+  interrupt.enable = 0;
+  interrupt.flags = 0;
+
+  keys.a = 1;
+  keys.b = 1;
+  keys.select = 1;
+  keys.start = 1;
+  keys.right = 1;
+  keys.left = 1;
+  keys.up = 1;
+  keys.down = 1;
+
+  memset(tiles, 0, sizeof(tiles));
+
+  backgroundPalette[0] = palette[0];
+  backgroundPalette[1] = palette[1];
+  backgroundPalette[2] = palette[2];
+  backgroundPalette[3] = palette[3];
+
+  spritePalette[0][0] = palette[0];
+  spritePalette[0][1] = palette[1];
+  spritePalette[0][2] = palette[2];
+  spritePalette[0][3] = palette[3];
+
+  spritePalette[1][0] = palette[0];
+  spritePalette[1][1] = palette[1];
+  spritePalette[1][2] = palette[2];
+  spritePalette[1][3] = palette[3];
+
+  gpu.control = 0;
+  gpu.scrollX = 0;
+  gpu.scrollY = 0;
+  gpu.scanline = 0;
+  gpu.tick = 0;
+
+  ticks = 0;
+  stopped = 0;
+
+#ifdef WIN
+  memset(framebuffer, 255, sizeof(framebuffer));
+#endif
+
+  writeByte(0xFF05, 0);
+  writeByte(0xFF06, 0);
+  writeByte(0xFF07, 0);
+  writeByte(0xFF10, 0x80);
+  writeByte(0xFF11, 0xBF);
+  writeByte(0xFF12, 0xF3);
+  writeByte(0xFF14, 0xBF);
+  writeByte(0xFF16, 0x3F);
+  writeByte(0xFF17, 0x00);
+  writeByte(0xFF19, 0xBF);
+  writeByte(0xFF1A, 0x7A);
+  writeByte(0xFF1B, 0xFF);
+  writeByte(0xFF1C, 0x9F);
+  writeByte(0xFF1E, 0xBF);
+  writeByte(0xFF20, 0xFF);
+  writeByte(0xFF21, 0x00);
+  writeByte(0xFF22, 0x00);
+  writeByte(0xFF23, 0xBF);
+  writeByte(0xFF24, 0x77);
+  writeByte(0xFF25, 0xF3);
+  writeByte(0xFF26, 0xF1);
+  writeByte(0xFF40, 0x91);
+  writeByte(0xFF42, 0x00);
+  writeByte(0xFF43, 0x00);
+  writeByte(0xFF45, 0x00);
+  writeByte(0xFF47, 0xFC);
+  writeByte(0xFF48, 0xFF);
+  writeByte(0xFF49, 0xFF);
+  writeByte(0xFF4A, 0x00);
+  writeByte(0xFF4B, 0x00);
+  writeByte(0xFFFF, 0x00);
 }
 
 void cpuStep(void) {
-	unsigned char instruction;
-	unsigned short operand = 0;
-	
-	if(stopped) return;
-	
-	// General breakpoints
-	//if(registers.pc == 0x034c) { // incorrect load
-	//if(registers.pc == 0x0309) { // start of function which writes to ff80
-	//if(registers.pc == 0x2a02) { // closer to function call which writes to ff80
-	//if(registers.pc == 0x034c) { // function which writes to ffa6 timer
-	
-	//if(registers.pc == 0x036c) { // loop
-	//if(registers.pc == 0x0040) { // vblank
-	
-	//if(registers.pc == 0x29fa) { // input
-	//	realtimeDebugEnable = 1;
-	//}
-	
-	if(realtimeDebugEnable) realtimeDebug();
-	
-	instruction = readByte(registers.pc++);
-	
-	if(instructions[instruction].operandLength == 1) operand = (unsigned short)readByte(registers.pc);
-	if(instructions[instruction].operandLength == 2) operand = readShort(registers.pc);
-	registers.pc += instructions[instruction].operandLength;
-	
-	//if(instructions[instruction].operandLength) printf(instructions[instruction].disassembly, operand);
-	//else printf(instructions[instruction].disassembly);
-	//printf("\n");
-	
-	switch(instructions[instruction].operandLength) {
-		case 0:
-			((void (*)(void))instructions[instruction].execute)();
-			break;
-		
-		case 1:
-			((void (*)(unsigned char))instructions[instruction].execute)((unsigned char)operand);
-			break;
-		
-		case 2:
-			((void (*)(unsigned short))instructions[instruction].execute)(operand);
-			break;
-	}
-	
-	ticks += instructionTicks[instruction];
+  unsigned char instruction;
+  unsigned short operand = 0;
+
+  if (stopped)
+    return;
+
+  // General breakpoints
+  // if(registers.pc == 0x034c) { // incorrect load
+  // if(registers.pc == 0x0309) { // start of function which writes to ff80
+  // if(registers.pc == 0x2a02) { // closer to function call which writes to
+  // ff80 if(registers.pc == 0x034c) { // function which writes to ffa6 timer
+
+  // if(registers.pc == 0x036c) { // loop
+  // if(registers.pc == 0x0040) { // vblank
+
+  // if(registers.pc == 0x29fa) { // input
+  //	realtimeDebugEnable = 1;
+  // }
+
+  if (realtimeDebugEnable)
+    realtimeDebug();
+
+  instruction = readByte(registers.pc++);
+
+  if (instructions[instruction].operandLength == 1)
+    operand = (unsigned short)readByte(registers.pc);
+  if (instructions[instruction].operandLength == 2)
+    operand = readShort(registers.pc);
+  // printf("At %04X: ", registers.pc - 1);
+  registers.pc += instructions[instruction].operandLength;
+
+  // if (instructions[instruction].operandLength)
+  //   printf(instructions[instruction].disassembly, operand);
+  // else
+  //   printf("%s", instructions[instruction].disassembly);
+  // printf("\n");
+
+  switch (instructions[instruction].operandLength) {
+  case 0:
+    ((void (*)(void))instructions[instruction].execute)();
+    break;
+
+  case 1:
+    ((void (*)(unsigned char))instructions[instruction].execute)(
+        (unsigned char)operand);
+    break;
+
+  case 2:
+    ((void (*)(unsigned short))instructions[instruction].execute)(operand);
+    break;
+  }
+
+  ticks += instructionTicks[instruction];
+
+  // printf("%s\n", instructions[instruction].disassembly);
 }
 
 void undefined(void) {
-	registers.pc--;
-	
-	unsigned char instruction = readByte(registers.pc);
-	
-	#ifdef WIN
-		char d[100];
-		sprintf(d, "Undefined instruction 0x%02x!\n\nCheck stdout for more details.", instruction);
-		MessageBox(NULL, d, "Cinoop", MB_OK);
-	#else
-	#ifndef PS4
-		printf("Undefined instruction 0x%02x!\n", instruction);
-	#endif
-	#endif
-	
-	printRegisters();
-	quit();
+  registers.pc--;
+
+  unsigned char instruction = readByte(registers.pc);
+
+#ifdef WIN
+  char d[100];
+  sprintf(d, "Undefined instruction 0x%02x!\n\nCheck stdout for more details.",
+          instruction);
+  MessageBox(NULL, d, "Cinoop", MB_OK);
+#else
+#ifndef PS4
+  printf("Undefined instruction 0x%02x!\n", instruction);
+#endif
+#endif
+
+  printRegisters();
+  quit();
 }
 
 static unsigned char inc(unsigned char value) {
-	if((value & 0x0f) == 0x0f) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	value++;
-	
-	if(value) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE);
-	
-	return value;
+  if ((value & 0x0f) == 0x0f)
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  value++;
+
+  if (value)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE);
+
+  return value;
 }
 
 static unsigned char dec(unsigned char value) {
-	if(value & 0x0f) FLAGS_CLEAR(FLAGS_HALFCARRY);
-	else FLAGS_SET(FLAGS_HALFCARRY);
-	
-	value--;
-	
-	if(value) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
-	
-	FLAGS_SET(FLAGS_NEGATIVE);
-	
-	return value;
+  if (value & 0x0f)
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+  else
+    FLAGS_SET(FLAGS_HALFCARRY);
+
+  value--;
+
+  if (value)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
+
+  FLAGS_SET(FLAGS_NEGATIVE);
+
+  return value;
 }
 
 static void add(unsigned char *destination, unsigned char value) {
-	unsigned int result = *destination + value;
-	
-	if(result & 0xff00) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	*destination = (unsigned char)(result & 0xff);
-	
-	if(*destination) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
-	
-	if(((*destination & 0x0f) + (value & 0x0f)) > 0x0f) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE);
+  unsigned int result = *destination + value;
+
+  if (result & 0xff00)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  *destination = (unsigned char)(result & 0xff);
+
+  if (*destination)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
+
+  if (((*destination & 0x0f) + (value & 0x0f)) > 0x0f)
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE);
 }
 
 static void add2(unsigned short *destination, unsigned short value) {
-	unsigned long result = *destination + value;
-	
-	if(result & 0xffff0000) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	*destination = (unsigned short)(result & 0xffff);
-	
-	if(((*destination & 0x0f) + (value & 0x0f)) > 0x0f) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	// zero flag left alone
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE);
+  unsigned long result = *destination + value;
+
+  if (result & 0xffff0000)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  *destination = (unsigned short)(result & 0xffff);
+
+  if (((*destination & 0x0f) + (value & 0x0f)) > 0x0f)
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  // zero flag left alone
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE);
 }
 
 static void adc(unsigned char value) {
-	value += FLAGS_ISCARRY ? 1 : 0;
-	
-	int result = registers.a + value;
-	
-	if(result & 0xff00) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	if(value == registers.a) FLAGS_SET(FLAGS_ZERO);
-	else FLAGS_CLEAR(FLAGS_ZERO);
-	
-	if(((value & 0x0f) + (registers.a & 0x0f)) > 0x0f) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	FLAGS_SET(FLAGS_NEGATIVE);
-	
-	registers.a = (unsigned char)(result & 0xff);
+  value += FLAGS_ISCARRY ? 1 : 0;
+
+  int result = registers.a + value;
+
+  if (result & 0xff00)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  if (value == registers.a)
+    FLAGS_SET(FLAGS_ZERO);
+  else
+    FLAGS_CLEAR(FLAGS_ZERO);
+
+  if (((value & 0x0f) + (registers.a & 0x0f)) > 0x0f)
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  FLAGS_SET(FLAGS_NEGATIVE);
+
+  registers.a = (unsigned char)(result & 0xff);
 }
 
 static void sbc(unsigned char value) {
-	value += FLAGS_ISCARRY ? 1 : 0;
-	
-	FLAGS_SET(FLAGS_NEGATIVE);
-	
-	if(value > registers.a) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	if(value == registers.a) FLAGS_SET(FLAGS_ZERO);
-	else FLAGS_CLEAR(FLAGS_ZERO);
-	
-	if((value & 0x0f) > (registers.a & 0x0f)) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	registers.a -= value;
+  value += FLAGS_ISCARRY ? 1 : 0;
+
+  FLAGS_SET(FLAGS_NEGATIVE);
+
+  if (value > registers.a)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  if (value == registers.a)
+    FLAGS_SET(FLAGS_ZERO);
+  else
+    FLAGS_CLEAR(FLAGS_ZERO);
+
+  if ((value & 0x0f) > (registers.a & 0x0f))
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  registers.a -= value;
 }
 
 static void sub(unsigned char value) {
-	FLAGS_SET(FLAGS_NEGATIVE);
-	
-	if(value > registers.a) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	if((value & 0x0f) > (registers.a & 0x0f)) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	registers.a -= value;
-	
-	if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
+  FLAGS_SET(FLAGS_NEGATIVE);
+
+  if (value > registers.a)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  if ((value & 0x0f) > (registers.a & 0x0f))
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  registers.a -= value;
+
+  if (registers.a)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
 }
 
-static void and(unsigned char value) {
-	registers.a &= value;
-	
-	if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
-	
-	FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE);
-	FLAGS_SET(FLAGS_HALFCARRY);
+static void and (unsigned char value) {
+  registers.a &= value;
+
+  if (registers.a)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
+
+  FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE);
+  FLAGS_SET(FLAGS_HALFCARRY);
 }
 
-static void or(unsigned char value) {
-	registers.a |= value;
-	
-	if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
-	
-	FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE | FLAGS_HALFCARRY);
+static void or (unsigned char value) {
+  registers.a |= value;
+
+  if (registers.a)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
+
+  FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE | FLAGS_HALFCARRY);
 }
 
-static void xor(unsigned char value) {
-	registers.a ^= value;
-	
-	if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
-	
-	FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE | FLAGS_HALFCARRY);
-}
+static void xor
+    (unsigned char value) {
+      registers.a ^= value;
 
-static void cp(unsigned char value) {
-	if(registers.a == value) FLAGS_SET(FLAGS_ZERO);
-	else FLAGS_CLEAR(FLAGS_ZERO);
-	
-	if(value > registers.a) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	if((value & 0x0f) > (registers.a & 0x0f)) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	FLAGS_SET(FLAGS_NEGATIVE);
+      if (registers.a)
+        FLAGS_CLEAR(FLAGS_ZERO);
+      else
+        FLAGS_SET(FLAGS_ZERO);
+
+      FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE | FLAGS_HALFCARRY);
+    }
+
+    static void cp(unsigned char value) {
+  if (registers.a == value)
+    FLAGS_SET(FLAGS_ZERO);
+  else
+    FLAGS_CLEAR(FLAGS_ZERO);
+
+  if (value > registers.a)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  if ((value & 0x0f) > (registers.a & 0x0f))
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  FLAGS_SET(FLAGS_NEGATIVE);
 }
 
 // 0x00
-void nop(void) {  }
+void nop(void) {}
 
 // 0x01
 void ld_bc_nn(unsigned short operand) { registers.bc = operand; }
@@ -665,14 +723,16 @@ void ld_b_n(unsigned char operand) { registers.b = operand; }
 
 // 0x07
 void rlca(void) {
-	unsigned char carry = (registers.a & 0x80) >> 7;
-	if(carry) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	registers.a <<= 1;
-	registers.a += carry;
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
+  unsigned char carry = (registers.a & 0x80) >> 7;
+  if (carry)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  registers.a <<= 1;
+  registers.a += carry;
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
 }
 
 // 0x08
@@ -698,14 +758,17 @@ void ld_c_n(unsigned char operand) { registers.c = operand; }
 
 // 0x0f
 void rrca(void) {
-	unsigned char carry = registers.a & 0x01;
-	if(carry) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	registers.a >>= 1;
-	if(carry) registers.a |= 0x80;
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
+  unsigned char carry = registers.a & 0x01;
+  if (carry)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  registers.a >>= 1;
+  if (carry)
+    registers.a |= 0x80;
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
 }
 
 // 0x10
@@ -731,21 +794,23 @@ void ld_d_n(unsigned char operand) { registers.d = operand; }
 
 // 0x17
 void rla(void) {
-	int carry = FLAGS_ISSET(FLAGS_CARRY) ? 1 : 0;
-	
-	if(registers.a & 0x80) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	registers.a <<= 1;
-	registers.a += carry;
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
+  int carry = FLAGS_ISSET(FLAGS_CARRY) ? 1 : 0;
+
+  if (registers.a & 0x80)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  registers.a <<= 1;
+  registers.a += carry;
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
 }
 
 // 0x18
 void jr_n(unsigned char operand) {
-	registers.pc += (signed char)operand;
-	debugJump();
+  registers.pc += (signed char)operand;
+  debugJump();
 }
 
 // 0x19
@@ -768,26 +833,29 @@ void ld_e_n(unsigned char operand) { registers.e = operand; }
 
 // 0x1f
 void rra(void) {
-	int carry = (FLAGS_ISSET(FLAGS_CARRY) ? 1 : 0) << 7;
-	
-	if(registers.a & 0x01) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	registers.a >>= 1;
-	registers.a += carry;
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
+  int carry = (FLAGS_ISSET(FLAGS_CARRY) ? 1 : 0) << 7;
+
+  if (registers.a & 0x01)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  registers.a >>= 1;
+  registers.a += carry;
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_ZERO | FLAGS_HALFCARRY);
 }
 
 // 0x20
 void jr_nz_n(unsigned char operand) {
-	if(FLAGS_ISZERO) ticks += 8;
-	else {
-		registers.pc += (signed char)operand;
-		
-		debugJump();
-		ticks += 12;
-	}
+  if (FLAGS_ISZERO)
+    ticks += 8;
+  else {
+    registers.pc += (signed char)operand;
+
+    debugJump();
+    ticks += 12;
+  }
 }
 
 // 0x21
@@ -810,113 +878,116 @@ void ld_h_n(unsigned char operand) { registers.h = operand; }
 
 // 0x27
 void daa(void) {
-	/*unsigned int reg_one = registers.a;
-	
-	//Add or subtract correction values based on Subtract Flag
-	if(!FLAGS_ISNEGATIVE) {
-		if(FLAGS_ISHALFCARRY || ((reg_one & 0xF) > 0x09)) reg_one += 0x06;
-		if(FLAGS_ISCARRY || (reg_one > 0x9F)) reg_one += 0x60;
-	}
-	else  {
-		if(FLAGS_ISHALFCARRY) reg_one = (reg_one - 0x06) & 0xFF;
-		if(FLAGS_ISCARRY) reg_one -= 0x60;
-	}
-	
-	//Carry
-	if(reg_one & 0x100) FLAGS_SET(FLAGS_CARRY);
-	reg_one &= 0xFF;
-	
-	//Half-Carry
-	FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	//Zero
-	if(reg_one == 0) FLAGS_SET(FLAGS_ZERO);
-	else FLAGS_CLEAR(FLAGS_ZERO);
-	
-	registers.a = (unsigned char)reg_one;*/
-	
-	
-	
-	/*
-	{
-		unsigned int a = registers.a;
-		
-		if(FLAGS_ISHALFCARRY || ((registers.a & 15) > 9)) registers.a += 6;
-		FLAGS_CLEAR(FLAGS_CARRY);
-		
-		if(FLAGS_ISHALFCARRY || a > 0x99) {
-			registers.a += 0x60;
-			FLAGS_SET(FLAGS_CARRY);
-		}
-		
-		if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-		else FLAGS_SET(FLAGS_ZERO);
-	}*/
-	
-	
-	{
-		unsigned short s = registers.a;
-		
-		if(FLAGS_ISNEGATIVE) {
-			if(FLAGS_ISHALFCARRY) s = (s - 0x06)&0xFF;
-			if(FLAGS_ISCARRY) s -= 0x60;
-		}
-		else {
-			if(FLAGS_ISHALFCARRY || (s & 0xF) > 9) s += 0x06;
-			if(FLAGS_ISCARRY || s > 0x9F) s += 0x60;
-		}
-		
-		registers.a = s;
-		FLAGS_CLEAR(FLAGS_HALFCARRY);
-		
-		if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-		else FLAGS_SET(FLAGS_ZERO);
-		
-		if(s >= 0x100) FLAGS_SET(FLAGS_CARRY);
-	}
-	
-	/*
-	
-	
-	{
-		unsigned int a = registers.a;
-		
-		unsigned int correction = FLAGS_ISCARRY ? 0x60 : 0x00;
-		
-		if(FLAGS_ISHALFCARRY) correction |= 0x06;
-		
-		if(!FLAGS_ISNEGATIVE) {
-			if ((a & 0x0F) > 0x09)
-				correction |= 0x06;
-			if (a > 0x99)
-				correction |= 0x60;
-			
-			a += correction;
-		}
-		else a -= correction;
+  /*unsigned int reg_one = registers.a;
 
-		if(correction << 2 & 0x100) FLAGS_SET(FLAGS_CARRY);
-		else FLAGS_CLEAR(FLAGS_CARRY);
-		
-		if(a == 0) FLAGS_SET(FLAGS_ZERO);
-		else FLAGS_CLEAR(FLAGS_ZERO);
-		
-		a &= 0xFF;
-		
-		registers.a = a;
-	}
-	
-	*/
+  //Add or subtract correction values based on Subtract Flag
+  if(!FLAGS_ISNEGATIVE) {
+          if(FLAGS_ISHALFCARRY || ((reg_one & 0xF) > 0x09)) reg_one += 0x06;
+          if(FLAGS_ISCARRY || (reg_one > 0x9F)) reg_one += 0x60;
+  }
+  else  {
+          if(FLAGS_ISHALFCARRY) reg_one = (reg_one - 0x06) & 0xFF;
+          if(FLAGS_ISCARRY) reg_one -= 0x60;
+  }
+
+  //Carry
+  if(reg_one & 0x100) FLAGS_SET(FLAGS_CARRY);
+  reg_one &= 0xFF;
+
+  //Half-Carry
+  FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  //Zero
+  if(reg_one == 0) FLAGS_SET(FLAGS_ZERO);
+  else FLAGS_CLEAR(FLAGS_ZERO);
+
+  registers.a = (unsigned char)reg_one;*/
+
+  /*
+  {
+          unsigned int a = registers.a;
+
+          if(FLAGS_ISHALFCARRY || ((registers.a & 15) > 9)) registers.a += 6;
+          FLAGS_CLEAR(FLAGS_CARRY);
+
+          if(FLAGS_ISHALFCARRY || a > 0x99) {
+                  registers.a += 0x60;
+                  FLAGS_SET(FLAGS_CARRY);
+          }
+
+          if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
+          else FLAGS_SET(FLAGS_ZERO);
+  }*/
+
+  {
+    unsigned short s = registers.a;
+
+    if (FLAGS_ISNEGATIVE) {
+      if (FLAGS_ISHALFCARRY)
+        s = (s - 0x06) & 0xFF;
+      if (FLAGS_ISCARRY)
+        s -= 0x60;
+    } else {
+      if (FLAGS_ISHALFCARRY || (s & 0xF) > 9)
+        s += 0x06;
+      if (FLAGS_ISCARRY || s > 0x9F)
+        s += 0x60;
+    }
+
+    registers.a = s;
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+    if (registers.a)
+      FLAGS_CLEAR(FLAGS_ZERO);
+    else
+      FLAGS_SET(FLAGS_ZERO);
+
+    if (s >= 0x100)
+      FLAGS_SET(FLAGS_CARRY);
+  }
+
+  /*
+
+
+  {
+          unsigned int a = registers.a;
+
+          unsigned int correction = FLAGS_ISCARRY ? 0x60 : 0x00;
+
+          if(FLAGS_ISHALFCARRY) correction |= 0x06;
+
+          if(!FLAGS_ISNEGATIVE) {
+                  if ((a & 0x0F) > 0x09)
+                          correction |= 0x06;
+                  if (a > 0x99)
+                          correction |= 0x60;
+
+                  a += correction;
+          }
+          else a -= correction;
+
+          if(correction << 2 & 0x100) FLAGS_SET(FLAGS_CARRY);
+          else FLAGS_CLEAR(FLAGS_CARRY);
+
+          if(a == 0) FLAGS_SET(FLAGS_ZERO);
+          else FLAGS_CLEAR(FLAGS_ZERO);
+
+          a &= 0xFF;
+
+          registers.a = a;
+  }
+
+  */
 }
 
 // 0x28
 void jr_z_n(unsigned char operand) {
-	if(FLAGS_ISZERO) {
-		registers.pc += (signed char)operand;
-		debugJump();
-		ticks += 12;
-	}
-	else ticks += 8;
+  if (FLAGS_ISZERO) {
+    registers.pc += (signed char)operand;
+    debugJump();
+    ticks += 12;
+  } else
+    ticks += 8;
 }
 
 // 0x29
@@ -938,23 +1009,30 @@ void dec_l(void) { registers.l = dec(registers.l); }
 void ld_l_n(unsigned char operand) { registers.l = operand; }
 
 // 0x2f
-void cpl(void) { registers.a = ~registers.a; FLAGS_SET(FLAGS_NEGATIVE | FLAGS_HALFCARRY); }
+void cpl(void) {
+  registers.a = ~registers.a;
+  FLAGS_SET(FLAGS_NEGATIVE | FLAGS_HALFCARRY);
+}
 
 // 0x30
 void jr_nc_n(char operand) {
-	if(FLAGS_ISCARRY) ticks += 8;
-	else {
-		registers.pc += operand;
-		debugJump();
-		ticks += 12;
-	}
+  if (FLAGS_ISCARRY)
+    ticks += 8;
+  else {
+    registers.pc += operand;
+    debugJump();
+    ticks += 12;
+  }
 }
 
 // 0x31
 void ld_sp_nn(unsigned short operand) { registers.sp = operand; }
 
 // 0x32
-void ldd_hlp_a(void) { writeByte(registers.hl, registers.a); registers.hl--; }
+void ldd_hlp_a(void) {
+  writeByte(registers.hl, registers.a);
+  registers.hl--;
+}
 
 // 0x33
 void inc_sp(void) { registers.sp++; }
@@ -969,15 +1047,18 @@ void dec_hlp(void) { writeByte(registers.hl, dec(readByte(registers.hl))); }
 void ld_hlp_n(unsigned char operand) { writeByte(registers.hl, operand); }
 
 // 0x37
-void scf(void) { FLAGS_SET(FLAGS_CARRY); FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_HALFCARRY); }
+void scf(void) {
+  FLAGS_SET(FLAGS_CARRY);
+  FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_HALFCARRY);
+}
 
 // 0x38
 void jr_c_n(char operand) {
-	if(FLAGS_ISCARRY) {
-		registers.pc += operand;
-		ticks += 12;
-	}
-	else ticks += 8;
+  if (FLAGS_ISCARRY) {
+    registers.pc += operand;
+    ticks += 12;
+  } else
+    ticks += 8;
 }
 
 // 0x39
@@ -1000,10 +1081,12 @@ void ld_a_n(unsigned char operand) { registers.a = operand; }
 
 // 0x3f
 void ccf(void) {
-	if(FLAGS_ISCARRY) FLAGS_CLEAR(FLAGS_CARRY);
-	else FLAGS_SET(FLAGS_CARRY);
-	
-	FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_HALFCARRY);
+  if (FLAGS_ISCARRY)
+    FLAGS_CLEAR(FLAGS_CARRY);
+  else
+    FLAGS_SET(FLAGS_CARRY);
+
+  FLAGS_CLEAR(FLAGS_NEGATIVE | FLAGS_HALFCARRY);
 }
 
 // 0x41
@@ -1152,10 +1235,10 @@ void ld_hlp_l(void) { writeByte(registers.hl, registers.l); }
 
 // 0x76
 void halt(void) {
-	if(interrupt.master) {
-		//HALT EXECUTION UNTIL AN INTERRUPT OCCURS
-	}
-	else registers.pc++;
+  if (interrupt.master) {
+    // HALT EXECUTION UNTIL AN INTERRUPT OCCURS
+  } else
+    registers.pc++;
 }
 
 // 0x77
@@ -1327,28 +1410,28 @@ void xor_hlp(void) { xor(readByte(registers.hl)); }
 void xor_a(void) { xor(registers.a); }
 
 // 0xb0
-void or_b(void) { or(registers.b); }
+void or_b(void) { or (registers.b); }
 
 // 0xb1
-void or_c(void) { or(registers.c); }
+void or_c(void) { or (registers.c); }
 
 // 0xb2
-void or_d(void) { or(registers.d); }
+void or_d(void) { or (registers.d); }
 
 // 0xb3
-void or_e(void) { or(registers.e); }
+void or_e(void) { or (registers.e); }
 
 // 0xb4
-void or_h(void) { or(registers.h); }
+void or_h(void) { or (registers.h); }
 
 // 0xb5
-void or_l(void) { or(registers.l); }
+void or_l(void) { or (registers.l); }
 
 // 0xb6
-void or_hlp(void) { or(readByte(registers.hl)); }
+void or_hlp(void) { or (readByte(registers.hl)); }
 
 // 0xb7
-void or_a(void) { or(registers.a); }
+void or_a(void) { or (registers.a); }
 
 // 0xb8
 void cp_b(void) { cp(registers.b); }
@@ -1376,12 +1459,13 @@ void cp_a(void) { cp(registers.a); }
 
 // 0xc0
 void ret_nz(void) {
-	if(FLAGS_ISZERO) ticks += 8;
-	else {
-		registers.pc = readShortFromStack();
-		debugJump();
-		ticks += 20;
-	}
+  if (FLAGS_ISZERO)
+    ticks += 8;
+  else {
+    registers.pc = readShortFromStack();
+    debugJump();
+    ticks += 20;
+  }
 }
 
 // 0xc1
@@ -1389,29 +1473,31 @@ void pop_bc(void) { registers.bc = readShortFromStack(); }
 
 // 0xc2
 void jp_nz_nn(unsigned short operand) {
-	if(FLAGS_ISZERO) ticks += 12;
-	else {
-		registers.pc = operand;
-		debugJump();
-		ticks += 16;
-	}
+  if (FLAGS_ISZERO)
+    ticks += 12;
+  else {
+    registers.pc = operand;
+    debugJump();
+    ticks += 16;
+  }
 }
 
 // 0xc3
 void jp_nn(unsigned short operand) {
-	registers.pc = operand;
-	debugJump();
+  registers.pc = operand;
+  debugJump();
 }
 
 // 0xc4
 void call_nz_nn(unsigned short operand) {
-	if(FLAGS_ISZERO) ticks += 12;
-	else {
-		writeShortToStack(registers.pc);
-		registers.pc = operand;
-		debugJump();
-		ticks += 24;
-	}
+  if (FLAGS_ISZERO)
+    ticks += 12;
+  else {
+    writeShortToStack(registers.pc);
+    registers.pc = operand;
+    debugJump();
+    ticks += 24;
+  }
 }
 
 // 0xc5
@@ -1421,15 +1507,18 @@ void push_bc(void) { writeShortToStack(registers.bc); }
 void add_a_n(unsigned char operand) { add(&registers.a, operand); }
 
 // 0xc7
-void rst_0(void) { writeShortToStack(registers.pc); registers.pc = 0x0000; }
+void rst_0(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0000;
+}
 
 // 0xc8
 void ret_z(void) {
-	if(FLAGS_ISZERO) {
-		registers.pc = readShortFromStack();
-		ticks += 20;
-	}
-	else ticks += 8;
+  if (FLAGS_ISZERO) {
+    registers.pc = readShortFromStack();
+    ticks += 20;
+  } else
+    ticks += 8;
 }
 
 // 0xc9
@@ -1437,12 +1526,12 @@ void ret(void) { registers.pc = readShortFromStack(); }
 
 // 0xca
 void jp_z_nn(unsigned short operand) {
-	if(FLAGS_ISZERO) {
-		registers.pc = operand;
-		debugJump();
-		ticks += 16;
-	}
-	else ticks += 12;
+  if (FLAGS_ISZERO) {
+    registers.pc = operand;
+    debugJump();
+    ticks += 16;
+  } else
+    ticks += 12;
 }
 
 // 0xcb
@@ -1450,30 +1539,37 @@ void jp_z_nn(unsigned short operand) {
 
 // 0xcc
 void call_z_nn(unsigned short operand) {
-	if(FLAGS_ISZERO) {
-		writeShortToStack(registers.pc);
-		registers.pc = operand;
-		ticks += 24;
-	}
-	else ticks += 12;
+  if (FLAGS_ISZERO) {
+    writeShortToStack(registers.pc);
+    registers.pc = operand;
+    ticks += 24;
+  } else
+    ticks += 12;
 }
 
 // 0xcd
-void call_nn(unsigned short operand) { writeShortToStack(registers.pc); registers.pc = operand; }
+void call_nn(unsigned short operand) {
+  writeShortToStack(registers.pc);
+  registers.pc = operand;
+}
 
 // 0xce
 void adc_n(unsigned char operand) { adc(operand); }
 
 // 0xcf
-void rst_08(void) { writeShortToStack(registers.pc); registers.pc = 0x0008; }
+void rst_08(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0008;
+}
 
 // 0xd0
 void ret_nc(void) {
-	if(FLAGS_ISCARRY) ticks += 8;
-	else {
-		registers.pc = readShortFromStack();
-		ticks += 20;
-	}
+  if (FLAGS_ISCARRY)
+    ticks += 8;
+  else {
+    registers.pc = readShortFromStack();
+    ticks += 20;
+  }
 }
 
 // 0xd1
@@ -1481,21 +1577,21 @@ void pop_de(void) { registers.de = readShortFromStack(); }
 
 // 0xd2
 void jp_nc_nn(unsigned short operand) {
-	if(!FLAGS_ISCARRY) {
-		registers.pc = operand;
-		ticks += 16;
-	}
-	else ticks += 12;
+  if (!FLAGS_ISCARRY) {
+    registers.pc = operand;
+    ticks += 16;
+  } else
+    ticks += 12;
 }
 
 // 0xd4
 void call_nc_nn(unsigned short operand) {
-	if(!FLAGS_ISCARRY) {
-		writeShortToStack(registers.pc);
-		registers.pc = operand;
-		ticks += 24;
-	}
-	else ticks += 12;
+  if (!FLAGS_ISCARRY) {
+    writeShortToStack(registers.pc);
+    registers.pc = operand;
+    ticks += 24;
+  } else
+    ticks += 12;
 }
 
 // 0xd5
@@ -1505,15 +1601,18 @@ void push_de(void) { writeShortToStack(registers.de); }
 void sub_n(unsigned char operand) { sub(operand); }
 
 // 0xd7
-void rst_10(void) { writeShortToStack(registers.pc); registers.pc = 0x0010; }
+void rst_10(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0010;
+}
 
 // 0xd8
 void ret_c(void) {
-	if(FLAGS_ISCARRY) {
-		registers.pc = readShortFromStack();
-		ticks += 20;
-	}
-	else ticks += 8;
+  if (FLAGS_ISCARRY) {
+    registers.pc = readShortFromStack();
+    ticks += 20;
+  } else
+    ticks += 8;
 }
 
 // 0xd9
@@ -1521,32 +1620,37 @@ void ret_c(void) {
 
 // 0xda
 void jp_c_nn(unsigned short operand) {
-	if(FLAGS_ISCARRY) {
-		registers.pc = operand;
-		debugJump();
-		ticks += 16;
-	}
-	else ticks += 12;
+  if (FLAGS_ISCARRY) {
+    registers.pc = operand;
+    debugJump();
+    ticks += 16;
+  } else
+    ticks += 12;
 }
 
 // 0xdc
 void call_c_nn(unsigned short operand) {
-	if(FLAGS_ISCARRY) {
-		writeShortToStack(registers.pc);
-		registers.pc = operand;
-		ticks += 24;
-	}
-	else ticks += 12;
+  if (FLAGS_ISCARRY) {
+    writeShortToStack(registers.pc);
+    registers.pc = operand;
+    ticks += 24;
+  } else
+    ticks += 12;
 }
 
 // 0xde
 void sbc_n(unsigned char operand) { sbc(operand); }
 
 // 0xdf
-void rst_18(void) { writeShortToStack(registers.pc); registers.pc = 0x0018; }
+void rst_18(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0018;
+}
 
 // 0xe0
-void ld_ff_n_ap(unsigned char operand) { writeByte(0xff00 + operand, registers.a); }
+void ld_ff_n_ap(unsigned char operand) {
+  writeByte(0xff00 + operand, registers.a);
+}
 
 // 0xe1
 void pop_hl(void) { registers.hl = readShortFromStack(); }
@@ -1559,37 +1663,46 @@ void push_hl(void) { writeShortToStack(registers.hl); }
 
 // 0xe6
 void and_n(unsigned char operand) {
-	registers.a &= operand;
-	
-	FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE);
-	FLAGS_SET(FLAGS_HALFCARRY);
-	if(registers.a) FLAGS_CLEAR(FLAGS_ZERO);
-	else FLAGS_SET(FLAGS_ZERO);
+  registers.a &= operand;
+
+  FLAGS_CLEAR(FLAGS_CARRY | FLAGS_NEGATIVE);
+  FLAGS_SET(FLAGS_HALFCARRY);
+  if (registers.a)
+    FLAGS_CLEAR(FLAGS_ZERO);
+  else
+    FLAGS_SET(FLAGS_ZERO);
 }
 
 // 0xe7
-void rst_20(void) { writeShortToStack(registers.pc); registers.pc = 0x0020; }
+void rst_20(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0020;
+}
 
 // 0xe8
 void add_sp_n(char operand) {
-	int result = registers.sp + operand;
-	
-	if(result & 0xffff0000) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	registers.sp = result & 0xffff;
-	
-	if(((registers.sp & 0x0f) + (operand & 0x0f)) > 0x0f) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	// _does_ clear the zero flag
-	FLAGS_CLEAR(FLAGS_ZERO | FLAGS_NEGATIVE);
+  int result = registers.sp + operand;
+
+  if (result & 0xffff0000)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  registers.sp = result & 0xffff;
+
+  if (((registers.sp & 0x0f) + (operand & 0x0f)) > 0x0f)
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  // _does_ clear the zero flag
+  FLAGS_CLEAR(FLAGS_ZERO | FLAGS_NEGATIVE);
 }
 
 // 0xe9
 void jp_hl(void) {
-	registers.pc = registers.hl;
-	debugJump();
+  registers.pc = registers.hl;
+  debugJump();
 }
 
 // 0xea
@@ -1598,11 +1711,16 @@ void ld_nnp_a(unsigned short operand) { writeByte(operand, registers.a); }
 // 0xee
 void xor_n(unsigned char operand) { xor(operand); }
 
-//0xef
-void rst_28(void) { writeShortToStack(registers.pc); registers.pc = 0x0028; }
+// 0xef
+void rst_28(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0028;
+}
 
 // 0xf0
-void ld_ff_ap_n(unsigned char operand) { registers.a = readByte(0xff00 + operand); }
+void ld_ff_ap_n(unsigned char operand) {
+  registers.a = readByte(0xff00 + operand);
+}
 
 // 0xf1
 void pop_af(void) { registers.af = readShortFromStack(); }
@@ -1617,24 +1735,31 @@ void di_inst(void) { interrupt.master = 0; }
 void push_af(void) { writeShortToStack(registers.af); }
 
 // 0xf6
-void or_n(unsigned char operand) { or(operand); }
+void or_n(unsigned char operand) { or (operand); }
 
 // 0xf7
-void rst_30(void) { writeShortToStack(registers.pc); registers.pc = 0x0030; }
+void rst_30(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0030;
+}
 
 // 0xf8
 void ld_hl_sp_n(unsigned char operand) {
-	int result = registers.sp + (signed char)operand;
-	
-	if(result & 0xffff0000) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	if(((registers.sp & 0x0f) + (operand & 0x0f)) > 0x0f) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
-	
-	FLAGS_CLEAR(FLAGS_ZERO | FLAGS_NEGATIVE);
-	
-	registers.hl = (unsigned short)(result & 0xffff);
+  int result = registers.sp + (signed char)operand;
+
+  if (result & 0xffff0000)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  if (((registers.sp & 0x0f) + (operand & 0x0f)) > 0x0f)
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
+
+  FLAGS_CLEAR(FLAGS_ZERO | FLAGS_NEGATIVE);
+
+  registers.hl = (unsigned short)(result & 0xffff);
 }
 
 // 0xf9
@@ -1644,21 +1769,33 @@ void ld_sp_hl(void) { registers.sp = registers.hl; }
 void ld_a_nnp(unsigned short operand) { registers.a = readByte(operand); }
 
 // 0xfb
-void ei(void) { interrupt.master = 1; }
+void ei(void) {
+  interrupt.master = 1;
+  printf("EI\n");
+}
 
 // 0xfe
 void cp_n(unsigned char operand) {
-	FLAGS_SET(FLAGS_NEGATIVE);
-	
-	if(registers.a == operand) FLAGS_SET(FLAGS_ZERO);
-	else FLAGS_CLEAR(FLAGS_ZERO);
-	
-	if(operand > registers.a) FLAGS_SET(FLAGS_CARRY);
-	else FLAGS_CLEAR(FLAGS_CARRY);
-	
-	if((operand & 0x0f) > (registers.a & 0x0f)) FLAGS_SET(FLAGS_HALFCARRY);
-	else FLAGS_CLEAR(FLAGS_HALFCARRY);
+  FLAGS_SET(FLAGS_NEGATIVE);
+
+  if (registers.a == operand)
+    FLAGS_SET(FLAGS_ZERO);
+  else
+    FLAGS_CLEAR(FLAGS_ZERO);
+
+  if (operand > registers.a)
+    FLAGS_SET(FLAGS_CARRY);
+  else
+    FLAGS_CLEAR(FLAGS_CARRY);
+
+  if ((operand & 0x0f) > (registers.a & 0x0f))
+    FLAGS_SET(FLAGS_HALFCARRY);
+  else
+    FLAGS_CLEAR(FLAGS_HALFCARRY);
 }
 
-//0xff
-void rst_38(void) { writeShortToStack(registers.pc); registers.pc = 0x0038; }
+// 0xff
+void rst_38(void) {
+  writeShortToStack(registers.pc);
+  registers.pc = 0x0038;
+}

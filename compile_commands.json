@@ -1,0 +1,116 @@
+[
+  {
+    "arguments": [
+      "/nix/store/7nlf5v84s4p2yhx327j8495yik60qnzh-gcc-wrapper-14.3.0/bin/gcc",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-fms-extensions",
+      "-Ofast",
+      "-DLIN",
+      "-I",
+      "/nix/store/g2jzxk3s7cnkhh8yq55l4fbvf639zy37-glibc-2.40-66/include",
+      "-o",
+      "lbuild/cb.o",
+      "source/cb.c"
+    ],
+    "directory": "/home/myt/Documents/projects/Cinoop",
+    "file": "/home/myt/Documents/projects/Cinoop/source/cb.c",
+    "output": "/home/myt/Documents/projects/Cinoop/lbuild/cb.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/7nlf5v84s4p2yhx327j8495yik60qnzh-gcc-wrapper-14.3.0/bin/gcc",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-fms-extensions",
+      "-Ofast",
+      "-DLIN",
+      "-I",
+      "/nix/store/g2jzxk3s7cnkhh8yq55l4fbvf639zy37-glibc-2.40-66/include",
+      "-o",
+      "lbuild/cpu.o",
+      "source/cpu.c"
+    ],
+    "directory": "/home/myt/Documents/projects/Cinoop",
+    "file": "/home/myt/Documents/projects/Cinoop/source/cpu.c",
+    "output": "/home/myt/Documents/projects/Cinoop/lbuild/cpu.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/7nlf5v84s4p2yhx327j8495yik60qnzh-gcc-wrapper-14.3.0/bin/gcc",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-fms-extensions",
+      "-Ofast",
+      "-DLIN",
+      "-I",
+      "/nix/store/g2jzxk3s7cnkhh8yq55l4fbvf639zy37-glibc-2.40-66/include",
+      "-o",
+      "lbuild/debug.o",
+      "source/debug.c"
+    ],
+    "directory": "/home/myt/Documents/projects/Cinoop",
+    "file": "/home/myt/Documents/projects/Cinoop/source/debug.c",
+    "output": "/home/myt/Documents/projects/Cinoop/lbuild/debug.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/7nlf5v84s4p2yhx327j8495yik60qnzh-gcc-wrapper-14.3.0/bin/gcc",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-fms-extensions",
+      "-Ofast",
+      "-DLIN",
+      "-I",
+      "/nix/store/g2jzxk3s7cnkhh8yq55l4fbvf639zy37-glibc-2.40-66/include",
+      "-o",
+      "lbuild/display.o",
+      "source/display.c"
+    ],
+    "directory": "/home/myt/Documents/projects/Cinoop",
+    "file": "/home/myt/Documents/projects/Cinoop/source/display.c",
+    "output": "/home/myt/Documents/projects/Cinoop/lbuild/display.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/7nlf5v84s4p2yhx327j8495yik60qnzh-gcc-wrapper-14.3.0/bin/gcc",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-fms-extensions",
+      "-Ofast",
+      "-DLIN",
+      "-I",
+      "/nix/store/g2jzxk3s7cnkhh8yq55l4fbvf639zy37-glibc-2.40-66/include",
+      "-o",
+      "lbuild/gpu.o",
+      "source/gpu.c"
+    ],
+    "directory": "/home/myt/Documents/projects/Cinoop",
+    "file": "/home/myt/Documents/projects/Cinoop/source/gpu.c",
+    "output": "/home/myt/Documents/projects/Cinoop/lbuild/gpu.o"
+  },
+  {
+    "arguments": [
+      "/nix/store/7nlf5v84s4p2yhx327j8495yik60qnzh-gcc-wrapper-14.3.0/bin/gcc",
+      "-c",
+      "-Iinclude",
+      "-Wall",
+      "-fms-extensions",
+      "-Ofast",
+      "-DLIN",
+      "-I",
+      "/nix/store/g2jzxk3s7cnkhh8yq55l4fbvf639zy37-glibc-2.40-66/include",
+      "-o",
+      "lbuild/main.o",
+      "source/linux/main.c"
+    ],
+    "directory": "/home/myt/Documents/projects/Cinoop",
+    "file": "/home/myt/Documents/projects/Cinoop/source/linux/main.c",
+    "output": "/home/myt/Documents/projects/Cinoop/lbuild/main.o"
+  }
+]
